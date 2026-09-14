@@ -1,0 +1,78 @@
+# Excalidraw Desktop
+
+Excalidraw packagé en application native, hors ligne, via [Tauri](https://tauri.app) (Rust).
+Le frontend Excalidraw (React/Vite) est compilé en fichiers statiques une seule fois au build ;
+aucun Node.js n'est nécessaire pour exécuter l'application finale, seulement pour la compiler.
+
+## Structure
+
+```
+.
+├── vendor/excalidraw/     # submodule git -> excalidraw/excalidraw (source upstream)
+├── src-tauri/             # projet Rust/Tauri (shell natif, packaging)
+├── package.json           # scripts d'orchestration (build:web, dev, build)
+└── .github/workflows/     # CI multiplateforme (Windows/macOS/Linux)
+```
+
+## Prérequis
+
+- Node.js 20+ et Corepack (`corepack enable`) pour Yarn
+- Rust stable (`rustup`) + Cargo
+- Dépendances système Tauri selon l'OS :
+  - **Linux (Debian/Ubuntu)** :
+    ```
+    sudo apt install pkg-config libwebkit2gtk-4.1-dev libssl-dev \
+      libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev
+    ```
+  - **macOS** : Xcode Command Line Tools (`xcode-select --install`)
+  - **Windows** : Visual Studio Build Tools (C++) + WebView2 (préinstallé sur Windows 10/11 récents)
+
+## Installation
+
+```bash
+git submodule update --init --recursive
+npm install
+```
+
+## Développement
+
+```bash
+npm run dev
+```
+
+Lance le serveur de dev Vite d'Excalidraw (port 3000) et ouvre la fenêtre native Tauri dessus
+avec hot-reload.
+
+## Build de production (installateur natif)
+
+```bash
+npm run build
+```
+
+Compile le frontend Excalidraw en statique puis génère l'installateur natif pour l'OS courant
+dans `src-tauri/target/release/bundle/` :
+
+- **Linux** : `.deb`, `.AppImage`, `.rpm`
+- **Windows** : `.msi` / `.exe` (NSIS)
+- **macOS** : `.dmg` / `.app`
+
+## CI multiplateforme
+
+Le workflow `.github/workflows/build.yml` build automatiquement les 3 plateformes sur un tag
+`v*` (ou manuellement via `workflow_dispatch`) et publie une release GitHub draft avec les
+artefacts.
+
+## État actuel / prochaines étapes
+
+- [x] Vendoring d'Excalidraw en submodule + build statique validé
+- [x] Scaffold Tauri (fenêtre, icônes, packaging multi-cibles)
+- [x] Plugins Rust `dialog` et `fs` déclarés (accès natif au système de fichiers)
+- [ ] Intégration côté frontend : brancher l'ouverture/sauvegarde `.excalidraw` sur les APIs
+      Tauri (`@tauri-apps/plugin-dialog`, `@tauri-apps/plugin-fs`) plutôt que sur l'API navigateur
+      File System Access (peu fiable sous WebKitGTK/Linux)
+- [ ] Désactiver/masquer les fonctionnalités réseau non pertinentes hors-ligne (collaboration
+      temps réel, sync Firebase, partage de lien) dans `vendor/excalidraw/excalidraw-app`
+- [ ] Icônes personnalisées (actuellement icônes par défaut Tauri, à remplacer)
+- [ ] Signature de code Windows + notarization macOS pour éviter les avertissements de sécurité
+      à l'installation
+- [ ] Test réel sur les 3 OS (ce sandbox Linux n'a pas les libs système webkitgtk installées)

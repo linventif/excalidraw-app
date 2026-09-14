@@ -1,0 +1,15 @@
+{
+  "name": "excalidraw-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Excalidraw packaged as a native offline desktop app (Tauri)",
+  "scripts": {
+    "build:web": "cd vendor/excalidraw && yarn install --frozen-lockfile && yarn build",
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
