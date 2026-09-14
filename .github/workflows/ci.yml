@@ -46,3 +46,11 @@ jobs:
 
       - name: Cargo check (Tauri)
         run: cargo check --manifest-path src-tauri/Cargo.toml
+
+  deploy:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Dokploy redeploy
+        run: curl -fsS -X POST "${{ secrets.DOKPLOY_DEPLOY_WEBHOOK }}"
