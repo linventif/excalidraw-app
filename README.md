@@ -1,5 +1,7 @@
 # Excalidraw Desktop
 
+Dépôt : [linventif/excalidraw-app](https://github.com/linventif/excalidraw-app)
+
 Excalidraw packagé en application native, hors ligne, via [Tauri](https://tauri.app) (Rust).
 Le frontend Excalidraw (React/Vite) est compilé en fichiers statiques une seule fois au build ;
 aucun Node.js n'est nécessaire pour exécuter l'application finale, seulement pour la compiler.
@@ -30,7 +32,8 @@ aucun Node.js n'est nécessaire pour exécuter l'application finale, seulement p
 ## Installation
 
 ```bash
-git submodule update --init --recursive
+git clone --recurse-submodules git@github.com:linventif/excalidraw-app.git
+cd excalidraw-app
 npm install
 ```
 
@@ -56,11 +59,23 @@ dans `src-tauri/target/release/bundle/` :
 - **Windows** : `.msi` / `.exe` (NSIS)
 - **macOS** : `.dmg` / `.app`
 
-## CI multiplateforme
+## CI/CD
 
-Le workflow `.github/workflows/build.yml` build automatiquement les 3 plateformes sur un tag
-`v*` (ou manuellement via `workflow_dispatch`) et publie une release GitHub draft avec les
-artefacts.
+- `.github/workflows/ci.yml` : à chaque push/PR sur `main`, build le frontend et compile le
+  projet Rust (`cargo check`) sur Linux pour détecter vite les régressions.
+- `.github/workflows/release.yml` : sur un tag `v*` (ou déclenchement manuel), build les 3
+  plateformes (Windows/macOS/Linux) et publie une **release GitHub draft** avec tous les
+  installateurs (`.deb`, `.rpm`, `.AppImage`, `.msi`, `.dmg`) attachés.
+
+### Publier une nouvelle release
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+La release apparaît en brouillon sur GitHub une fois les 3 builds terminés ; il suffit de la
+publier manuellement après vérification.
 
 ## État actuel / prochaines étapes
 
