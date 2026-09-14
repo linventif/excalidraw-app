@@ -75,4 +75,7 @@ artefacts.
 - [ ] Icônes personnalisées (actuellement icônes par défaut Tauri, à remplacer)
 - [ ] Signature de code Windows + notarization macOS pour éviter les avertissements de sécurité
       à l'installation
-- [ ] Test réel sur les 3 OS (ce sandbox Linux n'a pas les libs système webkitgtk installées)
+- [x] Build Linux validé de bout en bout : `npm run build` produit avec succès `.deb` (25 Mo),
+      `.rpm` (25 Mo) et `.AppImage` (101 Mo) dans `src-tauri/target/release/bundle/`
+- [ ] Lancement visuel de l'app (pas de serveur d'affichage dans ce sandbox pour tester l'UI)
+- [ ] Build et test réels sur Windows et macOS
