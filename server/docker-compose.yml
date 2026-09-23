@@ -1,29 +1,48 @@
 # Self-hosted Excalidraw collaboration server.
 #
-# Quick start:
-#   1. Generate a secret:      openssl rand -hex 32
-#   2. Put it in a `.env` file next to this compose file (or export it in
-#      your shell) as INSTANCE_TOKEN=<the generated value>.
-#   3. docker compose up -d
-#   4. In the desktop app's settings, point it at http://<this-host>:3002
-#      with the same INSTANCE_TOKEN.
+# Two auth modes, pick one:
+#
+#   A) Private/closed instance (AUTH_MODE unset or "instance-token"):
+#      1. Generate a secret:      openssl rand -hex 32
+#      2. Put it in a `.env` file next to this compose file (or export it in
+#         your shell/Dokploy env vars) as INSTANCE_TOKEN=<the generated value>.
+#      3. docker compose up -d
+#      4. In the desktop app's settings ("Serveur privé"), point it at
+#         http://<this-host>:3002 with the same INSTANCE_TOKEN.
+#
+#   B) Public, open-registration instance (e.g. excalidraw.linv.dev):
+#      1. Set AUTH_MODE=open-registration (INSTANCE_TOKEN then optional).
+#      2. docker compose up -d
+#      3. Anyone can connect via the desktop app's "Serveur public" tab --
+#         no secret to share, each device gets its own identity.
 #
 # The server is 100% optional: if the desktop app has no server URL/token
 # configured, it never makes a network call and behaves exactly as it does
 # without this container running at all.
+#
+# By default this pulls the image CI publishes to GHCR on every `server-v*`
+# tag (see .github/workflows/server-release.yml) -- nothing to build here.
+# To build from local source instead (e.g. testing an unreleased change),
+# comment out `image:` and uncomment `build: .`.
 
 services:
   excalidraw-server:
-    build: .
-    # Or, once published: image: ghcr.io/<you>/excalidraw-server:latest
+    image: ghcr.io/linventif/excalidraw-app-server:latest
+    # build: .
     container_name: excalidraw-server
     restart: unless-stopped
     ports:
       - "3002:3002"
     environment:
-      # Required: shared secret the desktop app must send back. No default
-      # on purpose -- generate one with `openssl rand -hex 32`.
-      INSTANCE_TOKEN: "${INSTANCE_TOKEN:?set INSTANCE_TOKEN in your environment or a .env file}"
+      # "instance-token" (default) or "open-registration".
+      AUTH_MODE: "${AUTH_MODE:-instance-token}"
+      # Required only in instance-token mode; optional (extra superuser
+      # bearer) in open-registration mode. No default on purpose -- generate
+      # one with `openssl rand -hex 32`.
+      INSTANCE_TOKEN: "${INSTANCE_TOKEN:-}"
+      # open-registration mode only: how long an issued session token stays
+      # valid before the client transparently re-authenticates (seconds).
+      SESSION_TOKEN_TTL_SECONDS: "${SESSION_TOKEN_TTL_SECONDS:-86400}"
       # Optional overrides (defaults shown):
       PORT: "3002"
       DATABASE_PATH: "/data/excalidraw.sqlite"
