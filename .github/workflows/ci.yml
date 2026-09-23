@@ -57,6 +57,7 @@ jobs:
           response=$(curl -sS -i -X POST "${{ secrets.DOKPLOY_DEPLOY_WEBHOOK }}" \
             -A "github-actions-dokploy-deploy/1.0" \
             -H "Accept: */*" \
+            -H "clf-skip-token: ${{ secrets.CLOUDFLARE_SKIP_TOKEN }}" \
             -w '\n__CURL_STATUS__:%{http_code}\n__CURL_TIME__:%{time_total}s\n')
           echo "===== Full response (status line + headers + body) ====="
           echo "$response"
