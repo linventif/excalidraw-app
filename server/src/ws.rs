@@ -33,6 +33,8 @@ use socketioxide::{
     SocketIo,
 };
 
+use crate::config::AuthMode;
+use crate::open_auth;
 use crate::state::AppState;
 
 /// Sent by the client during `io(url, { auth: { token } })`.
@@ -75,32 +77,52 @@ fn no_args() -> serde_json::Value {
     serde_json::Value::Array(Vec::new())
 }
 
-/// Registers the `/` namespace: connect middleware (instance-token auth) +
-/// the connection handler wiring up all per-socket event listeners.
+/// Registers the `/` namespace: connect middleware (auth) + the connection
+/// handler wiring up all per-socket event listeners.
 pub fn register(io: &SocketIo) {
-    io.ns("/", on_connect.with(check_instance_token));
+    io.ns("/", on_connect.with(check_auth));
 }
 
 /// Connect middleware: validates `Authorization` via the `auth` handshake
-/// payload against `INSTANCE_TOKEN`. Uses `TryData` (never fails to extract)
-/// rather than `Data` so we can log *why* a handshake was rejected --
-/// missing/malformed payload vs. wrong token -- instead of letting a
-/// deserialize error silently reject the connection.
-fn check_instance_token(
+/// payload. Uses `TryData` (never fails to extract) rather than `Data` so we
+/// can log *why* a handshake was rejected -- missing/malformed payload vs.
+/// wrong/expired token -- instead of letting a deserialize error silently
+/// reject the connection.
+///
+/// Mode-dependent, mirroring `auth::require_auth` for REST:
+/// - `instance-token` (default): byte-for-byte the original behavior, the
+///   only valid token is `INSTANCE_TOKEN`.
+/// - `open-registration`: a valid token is either a still-valid session
+///   token issued by `POST /auth/verify`, or the operator's optional
+///   `INSTANCE_TOKEN`.
+async fn check_auth(
     socket: SocketRef,
     TryData(payload): TryData<AuthPayload>,
     State(state): State<AppState>,
 ) -> Result<(), AuthError> {
-    match payload {
-        Ok(p) if p.token == state.config.instance_token => Ok(()),
-        Ok(_) => {
-            tracing::warn!(socket_id = %socket.id, "socket.io handshake rejected: wrong instance token");
-            Err(AuthError)
-        }
+    let payload = match payload {
+        Ok(p) => p,
         Err(err) => {
             tracing::warn!(socket_id = %socket.id, error = %err, "socket.io handshake rejected: missing/malformed auth payload");
-            Err(AuthError)
+            return Err(AuthError);
         }
+    };
+
+    let valid = match state.config.auth_mode {
+        AuthMode::InstanceToken => {
+            state.config.instance_token.as_deref() == Some(payload.token.as_str())
+        }
+        AuthMode::OpenRegistration => {
+            state.config.instance_token.as_deref() == Some(payload.token.as_str())
+                || open_auth::validate_session_token(&state.db, &payload.token).await
+        }
+    };
+
+    if valid {
+        Ok(())
+    } else {
+        tracing::warn!(socket_id = %socket.id, "socket.io handshake rejected: invalid or expired token");
+        Err(AuthError)
     }
 }
 

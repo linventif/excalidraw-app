@@ -1,10 +1,13 @@
 mod auth;
 mod config;
 mod db;
+mod open_auth;
+mod rate_limit;
 mod rest;
 mod state;
 mod ws;
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::extract::DefaultBodyLimit;
@@ -14,7 +17,7 @@ use socketioxide::SocketIo;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 
-use config::Config;
+use config::{AuthMode, Config};
 use state::AppState;
 
 #[tokio::main]
@@ -52,15 +55,20 @@ async fn main() {
 
     tracing::info!(
         port = config.port,
+        auth_mode = ?config.auth_mode,
         database_path = %config.database_path.display(),
         data_dir = %config.data_dir.display(),
         allowed_origins = ?config.allowed_origins,
         "starting excalidraw collab server"
     );
 
+    let auth_mode = config.auth_mode;
+
     let state = AppState {
         db,
         config: Arc::new(config),
+        challenge_store: open_auth::ChallengeStore::new(),
+        rate_limiter: rate_limit::RateLimiter::new(),
     };
 
     let (socketio_layer, io) = SocketIo::builder().with_state(state.clone()).build_layer();
@@ -87,7 +95,7 @@ async fn main() {
 
     let protected = rest::protected_router().route_layer(axum::middleware::from_fn_with_state(
         state.clone(),
-        auth::require_instance_token,
+        auth::require_auth,
     ));
 
     // Comfortably above the client's 4 MiB FILE_UPLOAD_MAX_BYTES (encrypted
@@ -95,9 +103,25 @@ async fn main() {
     // still bounding request size against abuse.
     const MAX_BODY_BYTES: usize = 16 * 1024 * 1024;
 
-    let app = Router::new()
+    let mut app = Router::new()
         .merge(rest::health_router())
-        .merge(protected)
+        .merge(protected);
+
+    // `/auth/challenge` and `/auth/verify` only exist at all in
+    // open-registration mode -- in instance-token mode a request to them
+    // 404s, which is simpler and more honest than routes that exist but
+    // always answer "not enabled in this mode". Rate-limited (not
+    // instance-token-gated, since this endpoint pair *is* the auth flow)
+    // since it's the one surface of this server designed to be hit
+    // unauthenticated from the open internet.
+    if auth_mode == AuthMode::OpenRegistration {
+        let open_auth_routes = open_auth::auth_router().route_layer(
+            axum::middleware::from_fn_with_state(state.clone(), rate_limit::limit_auth_routes),
+        );
+        app = app.merge(open_auth_routes);
+    }
+
+    let app = app
         .with_state(state.clone())
         .layer(TraceLayer::new_for_http())
         .layer(socketio_layer)
@@ -114,7 +138,15 @@ async fn main() {
     };
 
     tracing::info!(%addr, "listening");
-    if let Err(err) = axum::serve(listener, app).await {
+    // `with_connect_info` so the per-IP rate limiter on the open-registration
+    // auth routes can extract the real peer address via `ConnectInfo`; a
+    // no-op for every other route, which don't use it.
+    if let Err(err) = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    {
         eprintln!("server error: {err}");
         std::process::exit(1);
     }
