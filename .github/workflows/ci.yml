@@ -53,4 +53,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Dokploy redeploy
-        run: curl -fsS -X POST "${{ secrets.DOKPLOY_DEPLOY_WEBHOOK }}"
+        run: |
+          response=$(curl -sS -i -X POST "${{ secrets.DOKPLOY_DEPLOY_WEBHOOK }}" \
+            -A "github-actions-dokploy-deploy/1.0" \
+            -H "Accept: */*" \
+            -w '\n__CURL_STATUS__:%{http_code}\n__CURL_TIME__:%{time_total}s\n')
+          echo "===== Full response (status line + headers + body) ====="
+          echo "$response"
+          echo "=========================================================="
+          status=$(echo "$response" | grep '__CURL_STATUS__:' | tail -1 | cut -d: -f2)
+          if [ -z "$status" ] || [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "::error::Dokploy webhook call failed with HTTP status '$status' -- see full response above (look for cf-ray/server headers or a Cloudflare block page in the body)"
+            exit 1
+          fi
+          echo "Dokploy webhook succeeded with HTTP $status"
