@@ -66,6 +66,16 @@ dans `src-tauri/target/release/bundle/` :
 - `.github/workflows/release.yml` : sur un tag `v*` (ou déclenchement manuel), build les 3
   plateformes (Windows/macOS/Linux) et publie une **release GitHub draft** avec tous les
   installateurs (`.deb`, `.rpm`, `.AppImage`, `.msi`, `.dmg`) attachés.
+- `.github/workflows/server-ci.yml` : à chaque push/PR sur `main` touchant `server/**`, compile
+  (`cargo check`), teste (`cargo test`) et lint (`cargo clippy`) le crate du serveur de
+  collaboration, indépendamment du reste du projet.
+- `.github/workflows/server-release.yml` : sur un tag `server-v*` (ou déclenchement manuel),
+  build le binaire `excalidraw-server` pour Linux/macOS/Windows, construit et pousse une image
+  Docker sur GitHub Container Registry, et publie une **release GitHub draft** avec les binaires
+  attachés.
+
+Le serveur de collaboration versionne **indépendamment** de l'app desktop : un tag `server-v*`
+ne déclenche jamais `release.yml`, et un tag `v*` ne déclenche jamais `server-release.yml`.
 
 ### Publier une nouvelle release
 
@@ -76,6 +86,61 @@ git push origin v0.1.0
 
 La release apparaît en brouillon sur GitHub une fois les 3 builds terminés ; il suffit de la
 publier manuellement après vérification.
+
+## Self-hosting du serveur de collaboration (optionnel)
+
+Un crate Rust indépendant (`server/`, package `excalidraw-server` — axum + socketioxide) permet
+d'activer la collaboration en temps réel (édition simultanée, curseurs) et la persistance des
+scènes/fichiers, façon "Excalidraw Plus" mais auto-hébergée. **Ce serveur est strictement
+optionnel** : sans configuration côté app, le mode desktop continue de fonctionner à 100%
+hors-ligne, exactement comme aujourd'hui, sans aucun appel réseau.
+
+### Lancer le serveur
+
+```bash
+cd server
+docker compose up -d
+```
+
+Voir `server/docker-compose.yml` pour le service et le volume de données par défaut. Le serveur
+peut aussi être compilé et lancé directement (`cargo run --release --manifest-path server/Cargo.toml`)
+ou via un des binaires précompilés attachés à chaque release `server-v*` (voir plus bas), pour les
+personnes qui préfèrent l'exécuter directement sur leur machine plutôt que via Docker.
+
+### Variables d'environnement
+
+| Variable          | Obligatoire | Description |
+|-------------------|:-----------:|-------------|
+| `PORT`            | non         | Port d'écoute HTTP/WebSocket du serveur. |
+| `INSTANCE_TOKEN`  | **oui**     | Jeton secret partagé, **sans valeur par défaut** : le serveur doit refuser toute requête REST/connexion Socket.IO sans le header `Authorization: Bearer <INSTANCE_TOKEN>` (ou l'équivalent dans le payload `auth` du handshake). À générer soi-même (`openssl rand -hex 32`) avant tout déploiement. |
+| `DATABASE_PATH`   | non         | Chemin du fichier SQLite utilisé pour la persistance des scènes et de leurs métadonnées. |
+| `DATA_DIR`        | non         | Dossier de stockage des fichiers/pièces jointes chiffrés côté client. |
+| `ALLOWED_ORIGINS` | non         | Origines CORS autorisées (inclure `tauri://localhost`, et `https://tauri.localhost` sur Windows, pour que l'app desktop puisse s'y connecter). |
+
+### Reverse proxy (TLS)
+
+Le serveur ne termine pas le TLS lui-même : pour un déploiement réel, placez-le derrière un
+reverse proxy (Caddy ou Traefik) qui gère le certificat. Exemple minimal avec Caddy :
+
+```caddyfile
+collab.mondomaine.tld {
+    reverse_proxy localhost:PORT
+}
+```
+
+Caddy obtient et renouvelle automatiquement un certificat Let's Encrypt pour le domaine.
+
+### Publier une nouvelle release du serveur
+
+```bash
+git tag server-v0.1.0
+git push origin server-v0.1.0
+```
+
+Déclenche `.github/workflows/server-release.yml` : build des binaires Linux/macOS/Windows,
+publication de l'image Docker sur `ghcr.io/linventif/excalidraw-app-server` (tag de version +
+`latest`), et création d'une release GitHub draft avec les binaires attachés. La release apparaît
+en brouillon une fois les jobs terminés ; il suffit de la publier manuellement après vérification.
 
 ## État actuel / prochaines étapes
 
@@ -94,3 +159,12 @@ publier manuellement après vérification.
       `.rpm` (25 Mo) et `.AppImage` (101 Mo) dans `src-tauri/target/release/bundle/`
 - [ ] Lancement visuel de l'app (pas de serveur d'affichage dans ce sandbox pour tester l'UI)
 - [ ] Build et test réels sur Windows et macOS
+- [x] CI du serveur de collaboration (`server-ci.yml`) : `cargo check`/`test`/`clippy` sur
+      `server/**` uniquement, YAML validé
+- [x] Release du serveur de collaboration (`server-release.yml`) : binaires Linux/macOS/Windows +
+      image Docker GHCR sur tag `server-v*`, YAML validé
+- [ ] Implémentation du serveur (`server/`, crate `excalidraw-server`) : relais Socket.IO,
+      persistance SQLite/fichiers, auth par `INSTANCE_TOKEN` — en cours en parallèle, voir
+      section « Self-hosting » ci-dessus pour le contrat de variables d'environnement
+- [ ] Intégration côté frontend du serveur optionnel (écran de réglages URL + token, bascule de
+      `data/firebase.ts` vers un nouveau `data/backend.ts` branché sur le serveur auto-hébergé)

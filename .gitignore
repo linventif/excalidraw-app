@@ -1,5 +1,8 @@
 node_modules/
 src-tauri/target/
 src-tauri/gen/
+server/target/
+server/data/
 *.log
 .DS_Store
+.claude/

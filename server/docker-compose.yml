@@ -1,0 +1,46 @@
+# Self-hosted Excalidraw collaboration server.
+#
+# Quick start:
+#   1. Generate a secret:      openssl rand -hex 32
+#   2. Put it in a `.env` file next to this compose file (or export it in
+#      your shell) as INSTANCE_TOKEN=<the generated value>.
+#   3. docker compose up -d
+#   4. In the desktop app's settings, point it at http://<this-host>:3002
+#      with the same INSTANCE_TOKEN.
+#
+# The server is 100% optional: if the desktop app has no server URL/token
+# configured, it never makes a network call and behaves exactly as it does
+# without this container running at all.
+
+services:
+  excalidraw-server:
+    build: .
+    # Or, once published: image: ghcr.io/<you>/excalidraw-server:latest
+    container_name: excalidraw-server
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      # Required: shared secret the desktop app must send back. No default
+      # on purpose -- generate one with `openssl rand -hex 32`.
+      INSTANCE_TOKEN: "${INSTANCE_TOKEN:?set INSTANCE_TOKEN in your environment or a .env file}"
+      # Optional overrides (defaults shown):
+      PORT: "3002"
+      DATABASE_PATH: "/data/excalidraw.sqlite"
+      DATA_DIR: "/data"
+      # Comma-separated extra origins allowed to connect, on top of the
+      # built-in tauri://localhost / https://tauri.localhost. Only needed if
+      # you also use this from a browser (e.g. a self-hosted web build).
+      # ALLOWED_ORIGINS: "https://excalidraw.example.com"
+      RUST_LOG: "info"
+    volumes:
+      - excalidraw-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3002/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+volumes:
+  excalidraw-data:
